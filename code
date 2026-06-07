@@ -1,0 +1,145 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_NeoPixel.h>
+
+// ---------------- OLED ----------------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_SDA 8
+#define OLED_SCL 9
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ---------------- HARDWARE ----------------
+#define LDR_PIN 13
+#define BUTTON_PIN 4
+
+#define PIXEL_PIN 48
+#define NUM_PIXELS 1
+
+Adafruit_NeoPixel pixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+// ---------------- SETTINGS ----------------
+#define DARK_THRESHOLD 1000
+
+// ---------------- STATE ----------------
+bool emergencyMode = false;
+
+int lastButtonState = 1;
+
+// ---------------- SETUP ----------------
+void setup() {
+
+  Serial.begin(115200);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.display();
+
+  pixel.begin();
+  pixel.clear();
+  pixel.show();
+}
+
+// ---------------- OLED ----------------
+void drawScreen(int lightLevel) {
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 0);
+  display.println("LIGHT SYSTEM");
+
+  display.println();
+
+  display.print("Light: ");
+  display.println(lightLevel);
+
+  display.println();
+
+  if (emergencyMode) {
+    display.println("MODE: EMERGENCY");
+    display.println("LIGHT: WHITE");
+  } else {
+    display.println("MODE: NORMAL");
+
+    if (lightLevel < DARK_THRESHOLD) {
+      display.println("STATUS: DARK");
+    } else {
+      display.println("STATUS: BRIGHT");
+    }
+  }
+
+  display.display();
+}
+
+// ---------------- BUTTON ----------------
+void handleButton() {
+
+  int state = digitalRead(BUTTON_PIN);
+
+  Serial.print("BTN: ");
+  Serial.println(state);
+
+  if (lastButtonState == 1 && state == 0) {
+    emergencyMode = !emergencyMode;
+
+    Serial.println(emergencyMode ? "EMERGENCY ON" : "EMERGENCY OFF");
+  }
+
+  lastButtonState = state;
+}
+
+// ---------------- AMBIENT ----------------
+void ambientFade() {
+
+  static uint16_t hue = 0;
+  hue += 300;
+
+  pixel.setPixelColor(
+    0,
+    pixel.gamma32(pixel.ColorHSV(hue))
+  );
+
+  pixel.show();
+
+  delay(20);
+}
+
+// ---------------- EMERGENCY (WHITE FIXED) ----------------
+void emergencyWhite() {
+
+  // full white
+  pixel.setPixelColor(0, pixel.Color(255, 255, 255));
+  pixel.show();
+}
+
+// ---------------- LOOP ----------------
+void loop() {
+
+  handleButton();
+
+  int lightLevel = analogRead(LDR_PIN);
+
+  drawScreen(lightLevel);
+
+  if (emergencyMode) {
+    emergencyWhite();
+    delay(10);
+    return;
+  }
+
+  if (lightLevel < DARK_THRESHOLD) {
+    ambientFade();
+  } else {
+    pixel.clear();
+    pixel.show();
+    delay(50);
+  }
+}
